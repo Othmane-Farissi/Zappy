@@ -4,6 +4,7 @@
 #include "server.h"
 #include "map.h"
 #include "client.h"
+#include "queue.h"
 
 #include <unistd.h>
 #include <stdlib.h>
