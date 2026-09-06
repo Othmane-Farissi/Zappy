@@ -1,100 +1,63 @@
 #include "zappy.h"
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
-
-// +++++++++++++++++++++ SERVER 
-
-t_queue		*ft_init_queue(void)
+static void init_resources(t_square *square)
 {
-	t_queue *queue;
+    int resource;
 
-	if (!(queue = calloc(sizeof(t_queue))))
-		return (NULL);
-	queue->first = NULL;
-	queue->last = NULL;
-	return (queue);
+    resource = 0;
+    while (resource < RESOURCE_COUNT)
+    {
+        square->resources[resource] = rand() % 4;
+        resource++;
+    }
 }
 
-int init_server(void)
+int init_server(t_server *server)
 {
-    if (!(g_server.map = calloc(sizeof(t_map))))
-		return (1);
-	if (!(g_server.buff = calloc(4096 * sizeof(char))))
-		return (1);
-	g_server.events = ft_init_queue();
-	g_server.timeunit = -1;
-	return (0);
+    size_t count;
+    size_t i;
+
+    srand((unsigned int)time(NULL));
+    count = (size_t)server->map.width * (size_t)server->map.height;
+    server->map.squares = calloc(count, sizeof(*server->map.squares));
+    if (server->map.squares == NULL)
+        return (1);
+    i = 0;
+    while (i < count)
+    {
+        init_resources(&server->map.squares[i]);
+        i++;
+    }
+    i = 0;
+    while (i < (size_t)server->teamcount)
+    {
+        server->teams[i].capacity = server->max_team_players;
+        i++;
+    }
+    return (0);
 }
 
-// +++++++++++++++++++++ MAP
-
-int init_square(t_square **square)
+void destroy_server(t_server *server)
 {
-	int i;
+    t_player *player;
+    t_player *next;
+    int i;
 
-	i = 0;
-	if (!(*square = calloc(sizeof(t_square))) || !((*square)->players = calloc(sizeof(t_player)*FD_SETSIZE)))
-		return (1); // to add free function
-	while (i < FD_SETSIZE)
-	{
-		(*square)->players[i++] = NULL;
-	}
-	return (0);
-}
-
-int init_map_ressources(void)
-{
-	int i;
-	int k;
-	int r;
-	int n_team;
-	int size;
-
-	i = 0;
-	k = 0;
-	r = 0;
-	n_team = sizeof(g_server.teams) / sizeof(t_team);
-	size = g_server.map->width;
-	while (k < 10)
-	{
-		i = 0;
-		while (i < map_size)
-		{
-			ressource = 0;
-			while (ressource < 7)
-			{
-				generate_ressource(ressource);
-				ressource++;
-			}
-			i++;
-		}
-		k++;
-	}
-}	
-
-int init_map(void)
-{
-	int i;
-	int j;
-
-	i = 0;
-	if (!(g_server.map->squares = calloc(g_server.map->width * sizeof(t_square **))))
-		return (1);
-	
-	while (i < g_server.map->width)
-	{
-		if (!(g_server.map->squares[i] = calloc(g_server.map->height * sizeof(t_square *))))
-			return (1);
-		j = 0;
-		while (j < g_server.map->height)
-		{
-			if (init_square(&(g_server.map->squares[i][j])) == 1)
-			{
-				return (1); // to add free function
-			}
-		}
-		i++;
-		init_map_ressources();
-	}
-	
-	return (0);
+    player = server->players;
+    while (player != NULL)
+    {
+        next = player->next;
+        free(player);
+        player = next;
+    }
+    i = 0;
+    while (i < server->teamcount)
+    {
+        free(server->teams[i].name);
+        i++;
+    }
+    free(server->map.squares);
 }

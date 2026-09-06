@@ -1,11 +1,16 @@
 #include "zappy.h"
 
-t_server m_server;
-
 int main(int argc, char **argv)
 {
-    if (init_server() == 1 || parse_param(argc, argv) == 1 || init_map() == 1)
+    if (parse_params(argc, argv, &g_server) != 0)
         return (1);
-
-    return 0;
+    if (init_server(&g_server) != 0)
+        return (1);
+    if (run_server(&g_server) != 0)
+    {
+        destroy_server(&g_server);
+        return (1);
+    }
+    destroy_server(&g_server);
+    return (0);
 }
