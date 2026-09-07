@@ -83,6 +83,7 @@ static int deadline_reached(const struct timeval *now, const struct timeval *dea
 }
 
 static void send_text(int fd, const char *text);
+static void check_victory(t_server *server, t_team *team);
 
 static long elapsed_microseconds(const struct timeval *now, const struct timeval *then)
 {
@@ -270,6 +271,37 @@ static void view_offset(t_direction direction, int depth, int side, int *x, int 
 	}
 }
 
+static int sound_direction(t_server *server, t_player *receiver, t_player *sender)
+{
+	int dx;
+	int dy;
+	int global;
+	int facing;
+	int delta;
+
+	dx = sender->x - receiver->x;
+	dy = sender->y - receiver->y;
+	if (dx > server->map.width / 2)
+		dx -= server->map.width;
+	else if (dx < -(server->map.width / 2))
+		dx += server->map.width;
+	if (dy > server->map.height / 2)
+		dy -= server->map.height;
+	else if (dy < -(server->map.height / 2))
+		dy += server->map.height;
+	if (dx == 0 && dy == 0)
+		return (0);
+	if (dy < 0)
+		global = dx > 0 ? 1 : (dx < 0 ? 7 : 0);
+	else if (dy > 0)
+		global = dx > 0 ? 3 : (dx < 0 ? 5 : 4);
+	else
+		global = dx > 0 ? 2 : 6;
+	facing = receiver->direction * 2;
+	delta = (global - facing + 8) % 8;
+	return ((8 - delta) % 8 + 1);
+}
+
 static int complete_incantation(t_server *server, t_player *initiator)
 {
 	t_player *player;
@@ -320,7 +352,36 @@ static int complete_incantation(t_server *server, t_player *initiator)
 		}
 		player = player->next;
 	}
+	check_victory(server, initiator->team);
 	return (1);
+}
+
+static void check_victory(t_server *server, t_team *team)
+{
+	t_player *player;
+	int elevated;
+	char response[128];
+
+	if (server->winner_announced)
+		return;
+	elevated = 0;
+	player = server->players;
+	while (player != NULL)
+	{
+		if (player->team == team && player->level >= 8)
+			elevated++;
+		player = player->next;
+	}
+	if (elevated < 6)
+		return;
+	server->winner_announced = true;
+	snprintf(response, sizeof(response), "equipe gagnante : %s\n", team->name);
+	player = server->players;
+	while (player != NULL)
+	{
+		send_text(player->fd, response);
+		player = player->next;
+	}
 }
 
 static int read_line(t_player *player)
@@ -443,7 +504,8 @@ static void handle_command(t_server *server, t_player *player, char *command)
 		{
 			if (recipient != player && recipient->team != NULL)
 			{
-				snprintf(response, sizeof(response), "message 0,%s\n", command + 10);
+				snprintf(response, sizeof(response), "message %d,%s\n",
+					sound_direction(server, recipient, player), command + 10);
 				send_text(recipient->fd, response);
 			}
 			recipient = recipient->next;

@@ -91,6 +91,7 @@ typedef struct s_server
 	t_team teams[MAX_TEAMS];
 	t_player *players;
 	t_egg *eggs;
+	bool winner_announced;
 	fd_set read_fds;
 	int max_fd;
 } t_server;
