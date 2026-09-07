@@ -85,6 +85,19 @@ static int deadline_reached(const struct timeval *now, const struct timeval *dea
 static void send_text(int fd, const char *text);
 static void check_victory(t_server *server, t_team *team);
 
+static void broadcast_graphics(t_server *server, const char *text)
+{
+	t_player *player;
+
+	player = server->players;
+	while (player != NULL)
+	{
+		if (player->graphic)
+			send_text(player->fd, text);
+		player = player->next;
+	}
+}
+
 static long elapsed_microseconds(const struct timeval *now, const struct timeval *then)
 {
 	return ((now->tv_sec - then->tv_sec) * 1000000L + now->tv_usec - then->tv_usec);
@@ -174,6 +187,12 @@ static void remove_player(t_server *server, t_player *player)
 		*current = player->next;
 	if (player->team != NULL && player->team->connected > 0)
 		player->team->connected--;
+	if (player->team != NULL && !player->graphic)
+	{
+		char event[64];
+		snprintf(event, sizeof(event), "pdi %d\n", player->id);
+		broadcast_graphics(server, event);
+	}
 	FD_CLR(player->fd, &server->read_fds);
 	close(player->fd);
 	free(player);
@@ -421,16 +440,25 @@ static void handle_command(t_server *server, t_player *player, char *command)
 		if (player->direction == WEST) x = (x + server->map.width - 1) % server->map.width;
 		player->x = x;
 		player->y = y;
+		snprintf(response, sizeof(response), "ppo %d %d %d %d\n", player->id,
+			player->x, player->y, player->direction);
+		broadcast_graphics(server, response);
 		send_text(player->fd, "ok\n");
 	}
 	else if (strcmp(command, "droite") == 0)
 	{
 		player->direction = (player->direction + 1) % 4;
+		snprintf(response, sizeof(response), "ppo %d %d %d %d\n", player->id,
+			player->x, player->y, player->direction);
+		broadcast_graphics(server, response);
 		send_text(player->fd, "ok\n");
 	}
 	else if (strcmp(command, "gauche") == 0)
 	{
 		player->direction = (player->direction + 3) % 4;
+		snprintf(response, sizeof(response), "ppo %d %d %d %d\n", player->id,
+			player->x, player->y, player->direction);
+		broadcast_graphics(server, response);
 		send_text(player->fd, "ok\n");
 	}
 	else if (strcmp(command, "inventaire") == 0)
@@ -479,6 +507,12 @@ static void handle_command(t_server *server, t_player *player, char *command)
 		{
 			square->resources[resource]--;
 			player->inventory[resource]++;
+			snprintf(response, sizeof(response), "bct %d %d %d %d %d %d %d %d %d\n",
+				player->x, player->y, square->resources[FOOD], square->resources[LINEMATE],
+				square->resources[DERAUMERE], square->resources[SIBUR],
+				square->resources[MENDIANE], square->resources[PHIRAS],
+				square->resources[THYSTAME]);
+			broadcast_graphics(server, response);
 			send_text(player->fd, "ok\n");
 		}
 		else
@@ -492,6 +526,12 @@ static void handle_command(t_server *server, t_player *player, char *command)
 		{
 			player->inventory[resource]--;
 			square->resources[resource]++;
+			snprintf(response, sizeof(response), "bct %d %d %d %d %d %d %d %d %d\n",
+				player->x, player->y, square->resources[FOOD], square->resources[LINEMATE],
+				square->resources[DERAUMERE], square->resources[SIBUR],
+				square->resources[MENDIANE], square->resources[PHIRAS],
+				square->resources[THYSTAME]);
+			broadcast_graphics(server, response);
 			send_text(player->fd, "ok\n");
 		}
 		else
@@ -510,6 +550,8 @@ static void handle_command(t_server *server, t_player *player, char *command)
 			}
 			recipient = recipient->next;
 		}
+		snprintf(response, sizeof(response), "pbc %d %s\n", player->id, command + 10);
+		broadcast_graphics(server, response);
 		send_text(player->fd, "ok\n");
 	}
 	else if (strcmp(command, "expulse") == 0)
@@ -599,6 +641,7 @@ static int accept_player(t_server *server)
 	if (player == NULL)
 		return (close(fd), 1);
 	player->fd = fd;
+	player->id = ++server->next_player_id;
 	player->team = NULL;
 	player->next = server->players;
 	server->players = player;
@@ -613,6 +656,34 @@ static int complete_handshake(t_server *server, t_player *player, char *team_nam
 {
 	t_team *team;
 	char response[128];
+	int x;
+	int y;
+	t_square *square;
+
+	if (strcmp(team_name, "GRAPHIC") == 0)
+	{
+		player->graphic = true;
+		snprintf(response, sizeof(response), "msz %d %d\n", server->map.width, server->map.height);
+		send_text(player->fd, response);
+		y = 0;
+		while (y < server->map.height)
+		{
+			x = 0;
+			while (x < server->map.width)
+			{
+				square = &server->map.squares[y * server->map.width + x];
+				snprintf(response, sizeof(response), "bct %d %d %d %d %d %d %d %d %d\n",
+					x, y, square->resources[FOOD], square->resources[LINEMATE],
+					square->resources[DERAUMERE], square->resources[SIBUR],
+					square->resources[MENDIANE], square->resources[PHIRAS],
+					square->resources[THYSTAME]);
+				send_text(player->fd, response);
+				x++;
+			}
+			y++;
+		}
+		return (0);
+	}
 
 	team = find_team(server, team_name);
 	if (team == NULL || team->connected >= team->capacity)
@@ -627,6 +698,9 @@ static int complete_handshake(t_server *server, t_player *player, char *team_nam
 	gettimeofday(&player->last_food, NULL);
 	snprintf(response, sizeof(response), "%d\n%d %d\n", team->capacity - team->connected, server->map.width, server->map.height);
 	send_text(player->fd, response);
+	snprintf(response, sizeof(response), "pnw %d %d %d %d %s\n", player->id,
+		player->x, player->y, player->direction, team->name);
+	broadcast_graphics(server, response);
 	return (0);
 }
 
@@ -674,7 +748,7 @@ int run_server(t_server *server)
 			next = player->next;
 			if (FD_ISSET(player->fd, &ready_fds) && read_line(player) <= 0)
 				remove_player(server, player);
-			else if (player->team == NULL)
+			else if (player->team == NULL && !player->graphic)
 			{
 				char *newline = strchr(player->input, '\n');
 				if (newline != NULL)
@@ -685,7 +759,7 @@ int run_server(t_server *server)
 					player->input[0] = '\0';
 				}
 			}
-			if (player->team != NULL)
+			if (player->team != NULL && !player->graphic)
 			{
 				if (update_hunger(server, player) != 0)
 					remove_player(server, player);

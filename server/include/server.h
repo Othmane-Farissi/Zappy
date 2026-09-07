@@ -50,6 +50,7 @@ typedef struct s_map
 struct s_player
 {
 	int fd;
+	int id;
 	int x;
 	int y;
 	int level;
@@ -57,6 +58,7 @@ struct s_player
 	t_direction direction;
 	t_team *team;
 	t_player *next;
+	bool graphic;
 	char input[MAX_LINE];
 	size_t input_length;
 	char commands[10][MAX_LINE];
@@ -94,6 +96,7 @@ typedef struct s_server
 	bool winner_announced;
 	fd_set read_fds;
 	int max_fd;
+	int next_player_id;
 } t_server;
 
 extern t_server g_server;
