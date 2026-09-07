@@ -44,6 +44,8 @@ void destroy_server(t_server *server)
 {
     t_player *player;
     t_player *next;
+    t_egg *egg;
+    t_egg *next_egg;
     int i;
 
     player = server->players;
@@ -52,6 +54,13 @@ void destroy_server(t_server *server)
         next = player->next;
         free(player);
         player = next;
+    }
+    egg = server->eggs;
+    while (egg != NULL)
+    {
+        next_egg = egg->next;
+        free(egg);
+        egg = next_egg;
     }
     i = 0;
     while (i < server->teamcount)

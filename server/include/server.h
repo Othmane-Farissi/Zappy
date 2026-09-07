@@ -32,6 +32,7 @@ typedef enum e_direction
 
 typedef struct s_team t_team;
 typedef struct s_player t_player;
+typedef struct s_egg t_egg;
 
 typedef struct s_square
 {
@@ -62,6 +63,14 @@ struct s_player
 	int command_count;
 	bool action_active;
 	struct timeval action_ready;
+	struct timeval last_food;
+};
+
+struct s_egg
+{
+	t_team *team;
+	struct timeval hatch_at;
+	t_egg *next;
 };
 
 struct s_team
@@ -81,6 +90,7 @@ typedef struct s_server
 	t_map map;
 	t_team teams[MAX_TEAMS];
 	t_player *players;
+	t_egg *eggs;
 	fd_set read_fds;
 	int max_fd;
 } t_server;
