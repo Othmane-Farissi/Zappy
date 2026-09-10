@@ -1,0 +1,9 @@
+# Build artifacts
+*.o
+server/server
+client/client
+gfx/gfx
+
+# Editor and local files
+.vscode/
+.env

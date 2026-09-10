@@ -154,25 +154,131 @@ static int handshake(t_client *client, const char *team)
     return (0);
 }
 
+static int command(t_client *client, const char *request, char *response)
+{
+    if (send_all(client->fd, request) != 0 ||
+        read_line(client, response, MAX_LINE) != 0)
+        return (1);
+    return (strcmp(response, "mort") == 0 ? 2 : 0);
+}
+
+static int food_count(const char *inventory)
+{
+    const char *food;
+    int count;
+
+    food = strstr(inventory, "nourriture ");
+    if (food == NULL || sscanf(food, "nourriture %d", &count) != 1)
+        return (-1);
+    return (count);
+}
+
+static int current_square_has(const char *vision, const char *resource)
+{
+    const char *start;
+    const char *end;
+    size_t length;
+    char square[MAX_LINE];
+
+    start = vision[0] == '{' ? vision + 1 : vision;
+    end = strchr(start, ',');
+    if (end == NULL)
+        end = strchr(start, '}');
+    if (end == NULL)
+        return (0);
+    length = (size_t)(end - start);
+    if (length >= sizeof(square))
+        length = sizeof(square) - 1;
+    memcpy(square, start, length);
+    square[length] = '\0';
+    return (strstr(square, resource) != NULL);
+}
+
+static const char *resource_to_take(const char *vision)
+{
+    static const char *resources[] = {
+        "linemate", "deraumere", "sibur", "mendiane", "phiras", "thystame"
+    };
+    size_t index;
+
+    index = 0;
+    while (index < sizeof(resources) / sizeof(resources[0]))
+    {
+        if (current_square_has(vision, resources[index]))
+            return (resources[index]);
+        index++;
+    }
+    return (NULL);
+}
+
 static int run_client(t_client *client)
 {
-    static const char *commands[] = {
-        "voir\n", "inventaire\n", "prend nourriture\n", "pose nourriture\n",
-        "avance\n", "droite\n", "gauche\n", "broadcast ready\n",
-        "expulse\n", "fork\n", "incantation\n", "connect_nbr\n"
-    };
+    char inventory[MAX_LINE];
+    char vision[MAX_LINE];
     char response[MAX_LINE];
-    size_t command;
+    char request[MAX_LINE];
+    const char *resource;
+    int food;
+    int status;
+    int steps;
 
-    command = 0;
+    steps = 0;
     while (1)
     {
-        if (send_all(client->fd, commands[command]) != 0 ||
-            read_line(client, response, sizeof(response)) != 0)
+        status = command(client, "inventaire\n", inventory);
+        if (status == 1)
             return (1);
-        if (strcmp(response, "mort") == 0)
+        if (status == 2)
             return (0);
-        command = (command + 1) % (sizeof(commands) / sizeof(commands[0]));
+        food = food_count(inventory);
+        if (food < 0)
+            return (1);
+        status = command(client, "prend nourriture\n", response);
+        if (status == 1)
+            return (1);
+        if (status == 2)
+            return (0);
+        if (strcmp(response, "ok") == 0)
+            continue;
+        status = command(client, "voir\n", vision);
+        if (status == 1)
+            return (1);
+        if (status == 2)
+            return (0);
+        if ((resource = resource_to_take(vision)) != NULL && food > 3)
+        {
+            snprintf(request, sizeof(request), "prend %s\n", resource);
+            status = command(client, request, response);
+            if (status == 1)
+                return (1);
+            if (status == 2)
+                return (0);
+        }
+        else
+        {
+            if (strstr(vision, "nourriture") != NULL && steps % 4 == 0)
+            {
+                status = command(client, "droite\n", response);
+                if (status == 1)
+                    return (1);
+                if (status == 2)
+                    return (0);
+            }
+            else if (steps > 0 && steps % 8 == 0)
+            {
+                status = command(client, "droite\n", response);
+                if (status == 1)
+                    return (1);
+                if (status == 2)
+                    return (0);
+            }
+            status = command(client, "avance\n", response);
+            if (status == 1)
+                return (1);
+            if (status == 2)
+                return (0);
+            steps++;
+        }
     }
 }
 

@@ -10,7 +10,7 @@ static void init_resources(t_square *square)
     resource = 0;
     while (resource < RESOURCE_COUNT)
     {
-        square->resources[resource] = rand() % 4;
+        square->resources[resource] = resource == FOOD ? 1 + rand() % 3 : rand() % 4;
         resource++;
     }
 }
